@@ -23,14 +23,16 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 1200);
 const { colliders } = buildWorld(scene, 7);
 
+window.__scene = scene;
 const audio = createAudio();
 const hud = createHud(document.getElementById('app'));
 const game = createGame(scene, colliders, audio, hud);
+window.__game = game;
 const state = game.state;
 
 const keys = {};
 let camAngle = 0;
-let camPitch = 0.34;
+let camPitch = 0.2;
 let dragging = false;
 
 window.addEventListener('resize', () => {
@@ -113,12 +115,12 @@ function stageShot(name) {
   if (name === 'play') {
     game.startMission(0);
     game.addWanted(3);
-    // Put the player in a car near Downtown for a chase frame.
+    // Put the player in a car on the Downtown avenue for a chase frame.
     const car = game.vehicles[0];
-    car.x = 6; car.z = -108;
-    game.player.x = 8; game.player.z = -104;
+    car.x = 4; car.z = -120; car.angle = Math.PI;
+    game.player.x = 6; game.player.z = -116;
     game.toggleCar();
-    camAngle = 2.6;
+    camAngle = Math.PI - 0.5;
   } else if (name === 'end') {
     game.startMission(1);
     game.addWanted(4);
@@ -144,14 +146,13 @@ function stageShot(name) {
 const camTarget = new THREE.Vector3();
 function updateCamera(smooth) {
   const p = state.playerPos;
-  const dist = state.driving ? 13 : 9.5;
-  const height = state.driving ? 5 : 4.2;
+  const dist = state.driving ? 12 : 8.5;
   const cx = p.x - Math.sin(camAngle) * Math.cos(camPitch) * dist;
   const cz = p.z - Math.cos(camAngle) * Math.cos(camPitch) * dist;
-  const cy = height + Math.sin(camPitch) * dist * 0.6;
+  const cy = 2.6 + Math.sin(camPitch) * dist;
   if (smooth === 1) camera.position.set(cx, cy, cz);
   else camera.position.lerp(camTarget.set(cx, cy, cz), 0.16);
-  camera.lookAt(p.x, 2.2, p.z);
+  camera.lookAt(p.x, 1.9, p.z);
 }
 
 let last = performance.now();

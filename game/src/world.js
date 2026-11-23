@@ -19,7 +19,7 @@ export function seededRandom(seed) {
 export function buildWorld(scene, seed = 7) {
   const rand = seededRandom(seed);
   const colliders = [];
-  scene.fog = new THREE.Fog(0xf7c8a0, 180, 720);
+  scene.fog = new THREE.Fog(0xa8d4e6, 260, 950);
   scene.background = new THREE.Color(0x87ceeb);
 
   const sun = new THREE.DirectionalLight(0xffe3b3, 1.05);
@@ -31,11 +31,11 @@ export function buildWorld(scene, seed = 7) {
   const ocean = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600), mat(0x1b7f9e));
   ocean.rotation.x = -Math.PI / 2; ocean.position.y = -1.2;
   scene.add(ocean);
-  const sand = new THREE.Mesh(new THREE.BoxGeometry(580, 3, 580), mat(0xeed9a4));
-  sand.position.y = -0.6;
+  const sand = new THREE.Mesh(new THREE.BoxGeometry(580, 2, 580), mat(0xeed9a4));
+  sand.position.y = -1.16;
   scene.add(sand);
-  const grass = new THREE.Mesh(new THREE.BoxGeometry(540, 3.4, 540), mat(0x69a85f));
-  grass.position.y = -0.4;
+  const grass = new THREE.Mesh(new THREE.BoxGeometry(540, 2, 540), mat(0x69a85f));
+  grass.position.y = -1.01;
   scene.add(grass);
 
   const roadMat = mat(0x3c4148);
@@ -57,9 +57,9 @@ export function buildWorld(scene, seed = 7) {
   scene.add(ring);
 
   const roofMat = mat(0x8d6e63);
-  for (let bx = -225; bx <= 225; bx += 45) {
-    for (let bz = -225; bz <= 225; bz += 45) {
-      if (Math.abs(bx) < 20 && Math.abs(bz) < 20) continue;
+  const BLOCK_CENTERS = [-225, -135, -45, 45, 135, 225];
+  for (const bx of BLOCK_CENTERS) {
+    for (const bz of BLOCK_CENTERS) {
       const jx = bx + (rand() - 0.5) * 10;
       const jz = bz + (rand() - 0.5) * 10;
       const downtownBoost = Math.max(0, 60 - Math.hypot(jx, jz + 140)) / 60;

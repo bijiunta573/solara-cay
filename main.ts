@@ -8,6 +8,8 @@
 // your own open-world crime game in its place (three.js or any library you vendor under game/),
 // put your 3 or 4 PNG or JPEG screenshots in screenshots/ (the first by name is the cover) and run it.
 //
+// Solara Cay (gta6-01): this entry's game is the original island open-world game in game/ —
+// nine districts, six story jobs, SCPD wanted response, crew abilities, races and a chop-shop.
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts

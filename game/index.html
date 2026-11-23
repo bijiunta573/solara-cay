@@ -4,19 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Solara Cay — an original island crime game</title>
+<link rel="icon" href="data:,">
 <style>
   html, body { margin:0; height:100%; overflow:hidden; background:#0b1020; font-family:'Trebuchet MS',Verdana,sans-serif; color:#fff; }
   #game { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; }
   #status { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
   .hidden { display:none !important; }
   /* Cinematic grade: teal-magenta wash, vignette and animated film grain over the 3D view. */
-  #gradeFx { position:fixed; inset:0; pointer-events:none; z-index:5; mix-blend-mode:overlay; opacity:.55;
-    background:linear-gradient(125deg, rgba(0,180,200,.55), rgba(0,0,0,0) 45%, rgba(255,0,140,.5)); }
+  #gradeFx { position:fixed; inset:0; pointer-events:none; z-index:5; mix-blend-mode:soft-light; opacity:.8;
+    background:linear-gradient(125deg, rgba(0,140,170,.8), rgba(0,0,0,0) 48%, rgba(200,0,110,.75)); }
   #vignette { position:fixed; inset:0; pointer-events:none; z-index:6;
-    background:radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(5,0,20,.5) 100%); }
-  #grain { position:fixed; inset:-60px; pointer-events:none; z-index:7; opacity:.06;
-    background:repeating-conic-gradient(#fff 0 .00012turn, #000 .00012turn .00024turn); animation:grainShift .42s steps(3) infinite; }
-  @keyframes grainShift { 0%{transform:translate(0,0)} 33%{transform:translate(-22px,14px)} 66%{transform:translate(16px,-20px)} 100%{transform:translate(0,0)} }
+    background:radial-gradient(ellipse at center, rgba(0,0,0,0) 58%, rgba(5,0,20,.42) 100%); }
+  #grain { position:fixed; inset:0; pointer-events:none; z-index:7; opacity:.028;
+    background:repeating-linear-gradient(0deg, #fff 0 1px, #000 1px 2px, #fff 2px 3px, #000 3px 4px); }
   #hud { position:fixed; inset:0; pointer-events:none; z-index:10; }
   #topbar { position:absolute; top:12px; right:16px; text-align:right; }
   #cashBox { font-size:30px; font-weight:900; color:#7dff8a; text-shadow:0 2px 6px #000; }
@@ -37,12 +37,12 @@
   #missionStages li.active { color:#fff; font-weight:700; }
   #missionStages li.todo { color:#99a; }
   #missionHint { font-size:12px; color:#6ee7ff; }
-  #dispatchBox { position:absolute; top:110px; right:16px; width:230px; background:rgba(20,5,10,.62); border-left:4px solid #ef476f; border-radius:8px; padding:8px 10px; font-size:12px; }
+  #dispatchBox { position:absolute; top:158px; right:16px; width:230px; background:rgba(20,5,10,.62); border-left:4px solid #ef476f; border-radius:8px; padding:8px 10px; font-size:12px; }
   .dispatchHead { font-weight:900; color:#ef476f; letter-spacing:1px; }
   .unit { display:flex; justify-content:space-between; gap:6px; padding:2px 0; border-bottom:1px solid rgba(255,255,255,.12); }
   .unit span { color:#bbb; } .unit em { color:#ffd166; font-style:normal; }
   .unit.dim { color:#99a; } .unit.warn { color:#ff5566; font-weight:800; }
-  #crewBox { position:absolute; left:16px; bottom:120px; display:flex; flex-direction:column; gap:5px; }
+  #crewBox { position:absolute; left:16px; bottom:222px; display:flex; flex-direction:column; gap:5px; }
   .crew { background:rgba(5,10,25,.6); border-radius:7px; padding:4px 9px; font-size:12px; display:flex; gap:8px; }
   .crew span { color:#cdb4db; } .crew em { color:#7dff8a; font-style:normal; } .crew.cooling em { color:#ff9; }
   #weaponBox { position:absolute; right:16px; bottom:216px; text-align:right; }
