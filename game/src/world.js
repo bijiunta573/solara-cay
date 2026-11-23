@@ -1,124 +1,150 @@
-// The game's rules and state, with no drawing and no browser in it: the player's paddle, the
-// pool of falling blocks and coins, spawning, collisions, score, lives and level. step() advances
-// one fixed step and returns what happened as bit flags, so the caller can react without the
-// world knowing about screens or sound. Nothing here allocates after createWorld returns.
-import { BLOCK, COIN, FIELD, LEVEL, LIVES, PLAYER, POOL_SIZE } from './config.js';
+// Solara Cay — world building: island terrain, road grid, buildings, palms, props.
+// Builds the whole three.js scene graph for the island city. Original procedural art.
 
-export const KIND_BLOCK = 0;
-export const KIND_COIN = 1;
+const ROAD_LINES = [-180, -90, 0, 90, 180];
+const BUILDING_COLORS = [0xf2e8cf, 0xe8b4b8, 0xa8dadc, 0xf4a261, 0xe9c46a, 0x90be6d, 0xcdb4db, 0xffc8dd, 0xbde0fe, 0xffafcc];
 
-export const EVENT_HIT = 1;
-export const EVENT_COIN = 2;
-export const EVENT_OVER = 4;
-
-function overlaps(a, b) {
-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+function mat(color) {
+  return new THREE.MeshLambertMaterial({ color });
 }
 
-export function createWorld(random) {
-  const player = { x: 0, y: FIELD.groundY - PLAYER.height, width: PLAYER.width, height: PLAYER.height, invulnerable: 0 };
-  const items = [];
-  for (let index = 0; index < POOL_SIZE; index += 1) {
-    items.push({ active: false, kind: KIND_BLOCK, x: 0, y: 0, width: 0, height: 0, speed: 0 });
-  }
-  const state = { player, items, score: 0, lives: LIVES, level: 1, elapsed: 0, blockTimer: 0, coinTimer: 0 };
+export function seededRandom(seed) {
+  let s = seed >>> 0;
+  return function next() {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
 
-  function reset() {
-    player.x = (FIELD.width - player.width) / 2;
-    player.invulnerable = 0;
-    for (const item of items) item.active = false;
-    state.score = 0;
-    state.lives = LIVES;
-    state.level = 1;
-    state.elapsed = 0;
-    state.blockTimer = BLOCK.interval;
-    state.coinTimer = COIN.interval;
-  }
+export function buildWorld(scene, seed = 7) {
+  const rand = seededRandom(seed);
+  const colliders = [];
+  scene.fog = new THREE.Fog(0xf7c8a0, 180, 720);
+  scene.background = new THREE.Color(0x87ceeb);
 
-  function freeItem() {
-    for (let index = 0; index < items.length; index += 1) if (!items[index].active) return items[index];
-    return null;
-  }
+  const sun = new THREE.DirectionalLight(0xffe3b3, 1.05);
+  sun.position.set(160, 240, 80);
+  scene.add(sun);
+  scene.add(new THREE.AmbientLight(0xbfd9ff, 0.55));
+  scene.add(new THREE.HemisphereLight(0xffe8c9, 0x2e6f6a, 0.35));
 
-  function spawnBlock() {
-    const item = freeItem();
-    if (item === null) return;
-    item.active = true;
-    item.kind = KIND_BLOCK;
-    item.width = BLOCK.minWidth + random() * (BLOCK.maxWidth - BLOCK.minWidth);
-    item.height = BLOCK.height;
-    item.x = random() * (FIELD.width - item.width);
-    item.y = -item.height;
-    item.speed = BLOCK.speed + BLOCK.speedPerLevel * (state.level - 1) + random() * BLOCK.speedJitter;
-  }
+  const ocean = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600), mat(0x1b7f9e));
+  ocean.rotation.x = -Math.PI / 2; ocean.position.y = -1.2;
+  scene.add(ocean);
+  const sand = new THREE.Mesh(new THREE.BoxGeometry(580, 3, 580), mat(0xeed9a4));
+  sand.position.y = -0.6;
+  scene.add(sand);
+  const grass = new THREE.Mesh(new THREE.BoxGeometry(540, 3.4, 540), mat(0x69a85f));
+  grass.position.y = -0.4;
+  scene.add(grass);
 
-  function spawnCoin() {
-    const item = freeItem();
-    if (item === null) return;
-    item.active = true;
-    item.kind = KIND_COIN;
-    item.width = COIN.size;
-    item.height = COIN.size;
-    item.x = random() * (FIELD.width - item.width);
-    item.y = -item.height;
-    item.speed = COIN.speed + COIN.speedPerLevel * (state.level - 1);
-  }
-
-  function blockInterval() {
-    return Math.max(BLOCK.minInterval, BLOCK.interval * BLOCK.intervalScale ** (state.level - 1));
-  }
-
-  /**
-   * One fixed step. `direction` is -1, 0 or 1 (left, still, right). With `harmless` set (the title
-   * screen's backdrop) things fall but nothing touches the player and nothing scores.
-   */
-  function step(dt, direction, harmless) {
-    let events = 0;
-    state.elapsed += dt;
-    state.level = Math.min(LEVEL.max, 1 + Math.floor(state.elapsed / LEVEL.seconds));
-
-    player.x = Math.min(FIELD.width - player.width, Math.max(0, player.x + direction * PLAYER.speed * dt));
-    if (player.invulnerable > 0) player.invulnerable = Math.max(0, player.invulnerable - dt);
-
-    state.blockTimer -= dt;
-    if (state.blockTimer <= 0) {
-      spawnBlock();
-      state.blockTimer += blockInterval();
+  const roadMat = mat(0x3c4148);
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0xf7e26b });
+  for (const v of ROAD_LINES) {
+    const ns = new THREE.Mesh(new THREE.BoxGeometry(16, 0.24, 540), roadMat);
+    ns.position.set(v, 0.15, 0); scene.add(ns);
+    const ew = new THREE.Mesh(new THREE.BoxGeometry(540, 0.24, 16), roadMat);
+    ew.position.set(0, 0.15, v); scene.add(ew);
+    for (let d = -260; d <= 260; d += 26) {
+      const dashA = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.28, 9), lineMat);
+      dashA.position.set(v, 0.16, d); scene.add(dashA);
+      const dashB = new THREE.Mesh(new THREE.BoxGeometry(9, 0.28, 0.7), lineMat);
+      dashB.position.set(d, 0.16, v); scene.add(dashB);
     }
-    state.coinTimer -= dt;
-    if (state.coinTimer <= 0) {
-      spawnCoin();
-      state.coinTimer += COIN.interval + random() * COIN.intervalJitter;
-    }
+  }
+  const ring = new THREE.Mesh(new THREE.RingGeometry(238, 254, 48), roadMat);
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.14;
+  scene.add(ring);
 
-    for (let index = 0; index < items.length; index += 1) {
-      const item = items[index];
-      if (!item.active) continue;
-      item.y += item.speed * dt;
-      if (item.y > FIELD.groundY) {
-        item.active = false;
-        if (item.kind === KIND_BLOCK && !harmless) state.score += BLOCK.dodgePoints;
-        continue;
+  const roofMat = mat(0x8d6e63);
+  for (let bx = -225; bx <= 225; bx += 45) {
+    for (let bz = -225; bz <= 225; bz += 45) {
+      if (Math.abs(bx) < 20 && Math.abs(bz) < 20) continue;
+      const jx = bx + (rand() - 0.5) * 10;
+      const jz = bz + (rand() - 0.5) * 10;
+      const downtownBoost = Math.max(0, 60 - Math.hypot(jx, jz + 140)) / 60;
+      const h = 8 + rand() * 22 + downtownBoost * 46;
+      const w = 16 + rand() * 12;
+      const color = BUILDING_COLORS[Math.floor(rand() * BUILDING_COLORS.length)];
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), mat(color));
+      b.position.set(jx, h / 2, jz);
+      scene.add(b);
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 1.5, 1.2, w + 1.5), roofMat);
+      roof.position.set(jx, h + 0.6, jz);
+      scene.add(roof);
+      colliders.push({ x: jx, z: jz, r: w * 0.72 });
+    }
+  }
+
+  const plaza = new THREE.Mesh(new THREE.CylinderGeometry(17, 17, 0.5, 24), mat(0xd9d2c4));
+  plaza.position.set(0, 0.25, 0); scene.add(plaza);
+  const fountain = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 3.2, 4, 12), mat(0x118ab2));
+  fountain.position.set(0, 2, 0); scene.add(fountain);
+  colliders.push({ x: 0, z: 0, r: 5 });
+
+  const tower = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 5, 30, 14), mat(0xf8f4ec));
+  tower.position.set(196, 15, 196); scene.add(tower);
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(2.6, 12, 10),
+    new THREE.MeshBasicMaterial({ color: 0xffe45e }));
+  lamp.position.set(196, 32, 196); scene.add(lamp);
+  colliders.push({ x: 196, z: 196, r: 6 });
+
+  const trunkMat = mat(0x8a5a33);
+  const leafMat = mat(0x2f9e44);
+  for (let i = 0; i < 130; i += 1) {
+    const x = (rand() - 0.5) * 500;
+    const z = (rand() - 0.5) * 500;
+    if (ROAD_LINES.some((v) => Math.abs(v - x) < 12 || Math.abs(v - z) < 12)) continue;
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.55, 7, 6), trunkMat);
+    trunk.position.set(x, 3.5, z); trunk.rotation.z = (rand() - 0.5) * 0.24;
+    scene.add(trunk);
+    const crown = new THREE.Mesh(new THREE.ConeGeometry(3.4, 2.4, 7), leafMat);
+    crown.position.set(x, 7.8, z);
+    scene.add(crown);
+  }
+
+  const poleMat = mat(0x37474f);
+  const bulbMat = new THREE.MeshBasicMaterial({ color: 0xfff3a6 });
+  for (const v of ROAD_LINES) {
+    for (let d = -240; d <= 240; d += 60) {
+      for (const off of [-10, 10]) {
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 7, 5), poleMat);
+        pole.position.set(v + off, 3.5, d); scene.add(pole);
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), bulbMat);
+        bulb.position.set(v + off, 7.2, d); scene.add(bulb);
       }
-      if (harmless || !overlaps(item, player)) continue;
-      if (item.kind === KIND_COIN) {
-        item.active = false;
-        state.score += COIN.points;
-        events |= EVENT_COIN;
-      } else if (player.invulnerable === 0) {
-        item.active = false;
-        state.lives -= 1;
-        player.invulnerable = PLAYER.invulnerable;
-        events |= EVENT_HIT;
-        if (state.lives === 0) {
-          events |= EVENT_OVER;
-          break;
-        }
-      }
     }
-    return events;
   }
 
-  reset();
-  return { state, reset, step };
+  return { colliders, lamp };
+}
+
+export function makeMarker(color = 0xffd166) {
+  const group = new THREE.Group();
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.4, 2.4, 26, 14, 1, true),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false }));
+  beam.position.y = 13;
+  group.add(beam);
+  const disc = new THREE.Mesh(new THREE.RingGeometry(2.8, 4.2, 24),
+    new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }));
+  disc.rotation.x = -Math.PI / 2; disc.position.y = 0.35;
+  group.add(disc);
+  return group;
+}
+
+export function collide(pos, colliders, radius = 1.2) {
+  for (const c of colliders) {
+    const dx = pos.x - c.x; const dz = pos.z - c.z;
+    const d2 = dx * dx + dz * dz;
+    const min = c.r + radius;
+    if (d2 < min * min && d2 > 0.0001) {
+      const d = Math.sqrt(d2);
+      pos.x = c.x + (dx / d) * min;
+      pos.z = c.z + (dz / d) * min;
+    }
+  }
+  const lim = 262;
+  pos.x = Math.max(-lim, Math.min(lim, pos.x));
+  pos.z = Math.max(-lim, Math.min(lim, pos.z));
 }

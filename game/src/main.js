@@ -1,134 +1,177 @@
-// Boot and the one loop: input is read every frame, the world advances in fixed 1/60 s steps
-// (several in a slow frame, none in a fast one), and the renderer paints what is there. The game
-// moves between four screens: title, play, paused and game over.
-//
-// ?seed=N fixes the falling pattern. ?shot=start|play|end (with &seed=N) stages that scene
-// instead of running the loop, paints it twice and sets window.__shotReady for a screenshot.
-import { BEST_KEY, LIVES, STEP } from './config.js';
-import { createRandom } from './random.js';
-import { createWorld, EVENT_HIT, EVENT_OVER } from './world.js';
-import { ACTION_CONFIRM, ACTION_PAUSE, createInput } from './input.js';
-import { createRenderer, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
-import { stageShot } from './shots.js';
+// Solara Cay — boot, input, third-person camera and the main loop.
+// Loads the vendored three.js global, builds the island, wires every system together.
 
-/** The longest frame the loop catches up on; a longer stall (a hidden tab) is dropped, not replayed. */
-const MAX_FRAME = 0.25;
+import { RADIO } from './data.js';
+import { createAudio } from './audio.js';
+import { createGame } from './game.js';
+import { createHud } from './hud.js';
+import { buildWorld } from './world.js';
 
 const params = new URLSearchParams(window.location.search);
 const shot = params.get('shot');
-const seedParam = Number.parseInt(params.get('seed') ?? '', 10);
-const seed = Number.isInteger(seedParam) ? seedParam : Math.floor(Math.random() * 4294967296);
 
 const canvas = document.getElementById('game');
 const status = document.getElementById('status');
-const world = createWorld(createRandom(seed));
-const renderer = createRenderer(canvas);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
 
-function readBest() {
-  try {
-    return Number.parseInt(window.localStorage.getItem(BEST_KEY) ?? '0', 10) || 0;
-  } catch {
-    return 0;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 1200);
+const { colliders } = buildWorld(scene, 7);
+
+const audio = createAudio();
+const hud = createHud(document.getElementById('app'));
+const game = createGame(scene, colliders, audio, hud);
+const state = game.state;
+
+const keys = {};
+let camAngle = 0;
+let camPitch = 0.34;
+let dragging = false;
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+window.addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  audio.ensure();
+  if (!state.started || state.paused) return;
+  if (e.code === 'KeyE') game.toggleCar();
+  if (e.code === 'KeyF') game.fireWeapon();
+  if (e.code === 'KeyM' && game.nearMissionStart()) game.startMission(game.nextMissionIndex());
+  if (e.code === 'KeyT') game.startRace();
+  if (e.code === 'KeyG') game.startChop();
+  if (e.code === 'KeyV') game.save();
+  if (e.code === 'KeyZ') game.useCrew(0);
+  if (e.code === 'KeyX') game.useCrew(1);
+  if (e.code === 'KeyC') game.useCrew(2);
+  if (e.code === 'KeyR') {
+    state.radioIndex = (state.radioIndex + 2) % 4 - 1; // -1 off, then 0,1,2
+    if (state.radioIndex >= 0) { state.radio = RADIO[state.radioIndex]; audio.setStation(state.radioIndex, RADIO); }
+    else { state.radio = null; audio.setStation(-1, RADIO); }
   }
+  if (e.code.startsWith('Digit')) {
+    const n = Number(e.code.slice(5));
+    if (n >= 1 && n <= 5) state.weaponIndex = n - 1;
+  }
+});
+window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+canvas.addEventListener('mousedown', () => { dragging = true; });
+window.addEventListener('mouseup', () => { dragging = false; });
+window.addEventListener('mousemove', (e) => {
+  if (!dragging) return;
+  camAngle -= e.movementX * 0.005;
+  camPitch = Math.max(0.08, Math.min(1.1, camPitch + e.movementY * 0.004));
+});
+canvas.addEventListener('click', () => { if (state.started && !state.paused) game.fireWeapon(); });
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyP' && state.started) {
+    state.paused = !state.paused;
+    hud.showPause(state.paused);
+  }
+});
+
+function readInput() {
+  return {
+    forward: !!(keys.KeyW || keys.ArrowUp),
+    back: !!(keys.KeyS || keys.ArrowDown),
+    left: !!(keys.KeyA || keys.ArrowLeft),
+    right: !!(keys.KeyD || keys.ArrowRight),
+    sprint: !!(keys.ShiftLeft || keys.ShiftRight),
+    camAngle,
+  };
 }
 
-function saveBest(value) {
-  try {
-    window.localStorage.setItem(BEST_KEY, String(value));
-  } catch {
-    // Storage can be off (private windows): the best score then lasts this visit only.
-  }
+function startGame(loadSave) {
+  state.started = true;
+  state.paused = false;
+  hud.showMenu(false);
+  hud.showHud(true);
+  if (loadSave) game.load();
+  audio.ensure();
+  status.textContent = 'Solara Cay. Explore the island, find the gold marker, press M to work.';
+  hud.toast('Welcome to Solara Cay, Nico. Gold marker = next story job. T = race, G = chop-shop.');
 }
 
-function runShot(name) {
-  const scene = stageShot(name, world);
-  let painted = 0;
+hud.on('startBtn', () => startGame(false));
+hud.on('continueBtn', () => startGame(true));
+hud.on('resumeBtn', () => { state.paused = false; hud.showPause(false); });
+hud.on('saveBtn', () => game.save());
+hud.on('quitBtn', () => { state.paused = false; hud.showPause(false); state.started = false; hud.showHud(false); hud.showMenu(true); });
+
+// Screenshot staging for shots.json: deterministic scenes of real gameplay state.
+function stageShot(name) {
+  hud.showMenu(false);
+  hud.showHud(true);
+  state.started = true;
+  if (name === 'play') {
+    game.startMission(0);
+    game.addWanted(3);
+    // Put the player in a car near Downtown for a chase frame.
+    const car = game.vehicles[0];
+    car.x = 6; car.z = -108;
+    game.player.x = 8; game.player.z = -104;
+    game.toggleCar();
+    camAngle = 2.6;
+  } else if (name === 'end') {
+    game.startMission(1);
+    game.addWanted(4);
+    game.player.x = 10; game.player.z = 128;
+    camAngle = 0.6;
+  } else {
+    camAngle = 2.2;
+  }
+  let frames = 0;
   function paint() {
-    renderer.draw(world.state, scene.screen, scene.best);
-    painted += 1;
-    if (painted < 2) requestAnimationFrame(paint);
+    game.update(1 / 30, { forward: name !== 'start', back: false, left: false, right: false, sprint: false, camAngle });
+    updateCamera(1);
+    hud.update(state);
+    hud.drawMinimap(state);
+    renderer.render(scene, camera);
+    frames += 1;
+    if (frames < 24) requestAnimationFrame(paint);
     else window.__shotReady = true;
   }
   requestAnimationFrame(paint);
 }
 
-function runGame() {
-  const input = createInput(canvas);
-  let screen = SCREEN_TITLE;
-  let best = readBest();
-  let accumulator = 0;
-  let last = performance.now();
-
-  // Screen readers (and anyone watching the page's text) hear the screen changes and each hit.
-  function announce(message) {
-    status.textContent = message;
-  }
-
-  function startGame() {
-    world.reset();
-    accumulator = 0;
-    screen = SCREEN_PLAY;
-    announce(`Playing. ${LIVES} lives.`);
-  }
-
-  function endGame() {
-    screen = SCREEN_OVER;
-    if (world.state.score > best) {
-      best = world.state.score;
-      saveBest(best);
-    }
-    announce(`Game over. Score ${world.state.score}. Best ${best}.`);
-  }
-
-  function handleActions() {
-    const actions = input.takeActions();
-    if (actions & ACTION_CONFIRM && (screen === SCREEN_TITLE || screen === SCREEN_OVER)) startGame();
-    else if (actions & ACTION_PAUSE && screen === SCREEN_PLAY) {
-      screen = SCREEN_PAUSED;
-      announce('Paused.');
-    } else if (actions & (ACTION_PAUSE | ACTION_CONFIRM) && screen === SCREEN_PAUSED) {
-      screen = SCREEN_PLAY;
-      announce('Playing.');
-    }
-  }
-
-  function step() {
-    if (screen === SCREEN_TITLE) {
-      world.step(STEP, 0, true);
-      return;
-    }
-    const events = world.step(STEP, input.direction(), false);
-    if (events & EVENT_OVER) endGame();
-    else if (events & EVENT_HIT) announce(world.state.lives === 1 ? 'Hit. 1 life left.' : `Hit. ${world.state.lives} lives left.`);
-  }
-
-  function frame(now) {
-    requestAnimationFrame(frame);
-    accumulator += Math.min((now - last) / 1000, MAX_FRAME);
-    last = now;
-    handleActions();
-    if (screen === SCREEN_TITLE || screen === SCREEN_PLAY) {
-      while (accumulator >= STEP && (screen === SCREEN_TITLE || screen === SCREEN_PLAY)) {
-        step();
-        accumulator -= STEP;
-      }
-    } else {
-      accumulator = 0;
-    }
-    renderer.draw(world.state, screen, best);
-  }
-
-  // Leaving the tab pauses a running game rather than letting blocks fall unseen.
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && screen === SCREEN_PLAY) {
-      screen = SCREEN_PAUSED;
-      announce('Paused.');
-    }
-  });
-
-  announce('Block Dodger. Press Space or click to start.');
-  requestAnimationFrame(frame);
+const camTarget = new THREE.Vector3();
+function updateCamera(smooth) {
+  const p = state.playerPos;
+  const dist = state.driving ? 13 : 9.5;
+  const height = state.driving ? 5 : 4.2;
+  const cx = p.x - Math.sin(camAngle) * Math.cos(camPitch) * dist;
+  const cz = p.z - Math.cos(camAngle) * Math.cos(camPitch) * dist;
+  const cy = height + Math.sin(camPitch) * dist * 0.6;
+  if (smooth === 1) camera.position.set(cx, cy, cz);
+  else camera.position.lerp(camTarget.set(cx, cy, cz), 0.16);
+  camera.lookAt(p.x, 2.2, p.z);
 }
 
-if (shot) runShot(shot);
-else runGame();
+let last = performance.now();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  if (state.started && !state.paused) {
+    // Keep the camera behind the driver while moving.
+    if (state.driving && (keys.KeyW || keys.KeyS)) camAngle += ((state.playerAngle - camAngle + Math.PI * 3) % (Math.PI * 2) - Math.PI) * dt * 1.4;
+    game.update(dt, readInput());
+    hud.update(state);
+    hud.drawMinimap(state);
+  }
+  updateCamera(0);
+  renderer.render(scene, camera);
+}
+
+if (shot) stageShot(shot);
+else {
+  hud.showHud(false);
+  requestAnimationFrame(frame);
+}
